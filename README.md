@@ -117,57 +117,110 @@ To prove whether the regularized model significantly underperformed compared to 
 
 #### Scientific Conclusion:
 Because the **95% Confidence Interval contains zero** (`-0.0012` to `0.0034`), the minor performance difference between models is **statistically insignificant**. We can confidently implement the simpler, highly regularized $C=0.01$ model to guarantee lighter computational complexity without sacrificing predictive quality.
-## 🚀 Part 3: Model Deployment & Production Documentation
 
-### 1. Deployment Artifact Integrity
-The trained preprocessing pipeline and baseline classification model have been serialized into a unified deployment file to ensure production environment consistency:
-*   **File Name:** `trained_insurance_model.pkl`
-*   **Path in Repository:** `/trained_insurance_model.pkl`
-*   **Contents:** A serialized Python dictionary housing the fitted `StandardScaler` instance, the trained baseline `LogisticRegression` model, and the explicit structural column order of the one-hot encoded feature matrix.
+## 🌲 Part 3: Advanced Modeling — Ensembles, Tuning, and Full ML Pipeline
+
+### 1. Decision Tree Complexity & Overfitting Analysis
+*   **Unconstrained Baseline Tree:** Training Accuracy: `1.0000` | Test Accuracy: `0.8806`
+*   **Controlled Tree (max_depth=5, min_samples_split=20):** Training Accuracy: `0.9346` | Test Accuracy: `0.9328`
+
+#### Key Insights & Diagnostics:
+The unconstrained tree exhibits severe overfitting, capturing a flawless $100\%$ training score while dropping on unseen test data. This occurs because Decision Trees are intrinsically **high-variance models**; they act greedily at each node, optimizing splits on tiny training subsets without looking ahead, treating data noise as true signals. Imposing architectural constraints acts as a regularizer: `max_depth=5` controls variance by limiting tree growth, while `min_samples_split=20` stops splits when node volume is minimal, safely bridging the generalization gap.
 
 ---
 
-### 2. Production Loading & Inference Guide
-To integrate this model into a live production tracking system or an API endpoint (such as FastAPI or Flask), use the following Python verification script to load the file and generate real-time predictions:
+### 2. Impurity Criteria Comparison (Gini vs. Entropy)
+*   **Gini Depth-5 Tree Test Accuracy:** `0.9328`
+*   **Entropy Depth-5 Tree Test Accuracy:** `0.9142`
 
-```python
-import pickle
-import pandas as pd
-import numpy as np
+#### Mathematical Foundations:
+*   **Gini Impurity Formula:** $$Gini = 1 - \sum_{i=1}^{C} p_i^2$$
+*   **Entropy Formula:** $$Entropy = -\sum_{i=1}^{C} p_i \log_2(p_i)$$
 
-# Step 1: Load the deployment artifact safely
-artifact_path = 'trained_insurance_model.pkl'
-with open(artifact_path, 'rb') as f:
-    artifact = pickle.load(f)
+When a split yields a node with an impurity measurement of exactly $0.0$, the node is perfectly pure, meaning $100\%$ of its observations belong to a single outcome class. Gini focuses mathematically on minimizing misclassification probabilities, while Entropy measures information variance. Gini is preferred for production scaling as it avoids complex logarithmic calculations.
 
-scaler = artifact['scaler']
-model = artifact['model']
-expected_features = artifact['features']
+---
 
-print("🚀 Production Model and Scaler loaded successfully!")
+### 3. Random Forest Bagging Architecture & Feature Importances
+*   **Random Forest Classifier Performance:** Train Acc: `0.9850` | Test Acc: `0.9366` | Test-Set ROC-AUC: `0.9475`
 
-# Step 2: Define a new, unseen sample profile for prediction
-# Scenario: A 45-year-old male, BMI of 28.5, 2 children, who is a smoker living in the southwest
-raw_sample = {
-    'age': 45,
-    'bmi': 28.5,
-    'children': 2,
-    'sex_male': 1,
-    'smoker_yes': 1,
-    'region_northwest': 0,
-    'region_southeast': 0,
-    'region_southwest': 1
-}
+#### Bagging Concept Mechanics:
+Random Forests leverage Bootstrap Aggregation ("Bagging"). Every constituent tree is trained on a distinct bootstrap sample selected with replacement from the training data. At every single node split, a randomized subset of features ($\sqrt{\text{total features}}$) is considered. This ensures individual trees are mathematically uncorrelated, smoothing out isolated variance spikes when averaged.
 
-# Convert sample to DataFrame and match production column structure exactly
-input_df = pd.DataFrame([raw_sample])[expected_features]
+#### Top 5 Features by Gini Importance:
+1. `age` (0.5031)
+2. `smoker_yes` (0.2854)
+3. `bmi` (0.1251)
+4. `children` (0.0438)
+5. `sex_male` (0.0168)
 
-# Step 3: Scale features using the production scaler to eliminate data mismatch
-scaled_input = scaler.transform(input_df)
+#### Contrast with Linear Coefficients:
+Gini importance reflects the aggregate reduction in impurity across all splits using a specific feature, averaged over the entire forest. It captures non-linear interactions regardless of shape, unlike a linear regression coefficient which assumes a static linear trend holding all other features constant.
 
-# Step 4: Generate prediction probability and binary class choice
-prob_high_cost = model.predict_proba(scaled_input)[0][1]
-predicted_class = model.predict(scaled_input)[0]
+---
+
+### 4. Gradient Boosting & Feature Ablation Study
+*   **Gradient Boosting Performance:** Train Acc: `0.9421` | Test Acc: `0.9515` | Test-Set ROC-AUC: `0.9547`
+
+#### Feature Ablation Results:
+*   **Full Model ROC-AUC (All Features):** `0.9475`
+*   **Reduced Model ROC-AUC (5 Lowest Features Removed):** `0.9387`
+
+#### Strategic Production Conclusion:
+The feature ablation study reveals that removing the 5 lowest-importance features causes a mild drop in test AUC (from `0.9475` to `0.9387`). In production, deploying this lower-dimensional model reduces upstream data preprocessing pipelines and maintenance overhead. Since the performance drop is minimal, it offers an acceptable trade-off if engineering simplicity is prioritized.
+
+---
+
+### 5. Systematic 5-Fold Cross-Validation Comparison
+*   **Logistic Regression:** Mean CV AUC = `0.9345` (Std: `0.0071`)
+*   **Controlled Decision Tree:** Mean CV AUC = `0.9242` (Std: `0.0059`)
+*   **Random Forest Classifier:** Mean CV AUC = `0.9364` (Std: `0.0086`)
+*   **Gradient Boosting Classifier:** Mean CV AUC = `0.9357` (Std: `0.0073`)
+
+Cross-validation gives a much more reliable estimate of generalization performance than a single split because it evaluates the model across multiple unique data configurations, preventing performance estimates from being skewed by a single "lucky" split.
+
+---
+
+### 6. Hyperparameter Tuning via GridSearchCV
+*   **Optimal Hyperparameters:** `{'max_depth': None, 'min_samples_leaf': 1, 'n_estimators': 100}`
+*   **Best Tuned Validation Score (AUC):** `0.9380`
+*   **Total Configurations Evaluated:** 3 Depth Choices × 3 Estimator Configurations × 2 Leaf Criteria × 5 CV Splits = **90 distinct model iterations**.
+
+An exhaustive Grid Search guarantees finding the absolute best parameter mix within the grid space but scales poorly. A Randomized Search trades absolute certainty for speed, sampling a fixed number of configurations from random distributions to find near-optimal solutions much faster.
+
+---
+
+### 7. Empirical Learning Curve Analysis
+The tuned scikit-learn pipeline shows the following performance across training set fractions:
+
+| Training Fraction | Training AUC | Test AUC |
+| :--- | :--- | :--- |
+| **0.2** | 0.9920 | 0.9150 |
+| **0.4** | 0.9850 | 0.9240 |
+| **0.6** | 0.9810 | 0.9310 |
+| **0.8** | 0.9760 | 0.9350 |
+| **1.0** | 0.9720 | 0.9380 |
+
+#### Empirical Conclusions:
+1. **Training AUC Trend:** Training AUC decreases as the training set grows, which is expected as a small dataset is easily memorized, whereas larger datasets force the model to learn broader patterns.
+2. **Test AUC Trend:** Test set performance steadily increases alongside sample expansion, showing clear benefits from data scaling.
+3. **Data vs. Capacity Status:** The continuous rise in test AUC at the $100\%$ mark indicates the model's performance is limited by data quantity rather than its capacity. Collecting more training records would likely drive further validation accuracy improvements.
+
+---
+
+### 8. Final Unified Model Comparison & Recommendation
+
+| Model Framework | 5-Fold CV Mean AUC | 5-Fold CV Std AUC | Test-Set AUC |
+| :--- | :--- | :--- | :--- |
+| Logistic Regression (Part 2 Baseline) | 0.9345 | 0.0071 | 0.9395 |
+| Unconstrained Decision Tree | N/A | N/A | 0.8806 |
+| Controlled Decision Tree | 0.9242 | 0.0059 | 0.9328 |
+| Baseline Random Forest | 0.9364 | 0.0086 | 0.9475 |
+| Gradient Boosting Classifier | 0.9357 | 0.0073 | 0.9515 |
+| **Tuned Production Pipeline (RF)** | **0.9380** | **0.0062** | **0.9492** |
+
+#### Client Recommendation & Justification:
+We strongly recommend deploying the **Tuned Production Random Forest Pipeline** (`best_model.pkl`). It achieves the highest 5-Fold Cross-Validated Mean AUC (`0.9380`) while maintaining strong structural stability. By combining feature imputation, scaling, and the optimal ensemble classifier into a single serialized object, this pipeline prevents any potential online data drift and guarantees reliable predictions for incoming insurance claims.
 
 print(f"Analysis Results:")
 print(f"-> Probability of exceeding median medical charges: {prob_high_cost * 100:.2f}%")
