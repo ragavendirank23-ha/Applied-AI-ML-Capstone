@@ -117,5 +117,59 @@ To prove whether the regularized model significantly underperformed compared to 
 
 #### Scientific Conclusion:
 Because the **95% Confidence Interval contains zero** (`-0.0012` to `0.0034`), the minor performance difference between models is **statistically insignificant**. We can confidently implement the simpler, highly regularized $C=0.01$ model to guarantee lighter computational complexity without sacrificing predictive quality.
+## 🚀 Part 3: Model Deployment & Production Documentation
 
+### 1. Deployment Artifact Integrity
+The trained preprocessing pipeline and baseline classification model have been serialized into a unified deployment file to ensure production environment consistency:
+*   **File Name:** `trained_insurance_model.pkl`
+*   **Path in Repository:** `/trained_insurance_model.pkl`
+*   **Contents:** A serialized Python dictionary housing the fitted `StandardScaler` instance, the trained baseline `LogisticRegression` model, and the explicit structural column order of the one-hot encoded feature matrix.
+
+---
+
+### 2. Production Loading & Inference Guide
+To integrate this model into a live production tracking system or an API endpoint (such as FastAPI or Flask), use the following Python verification script to load the file and generate real-time predictions:
+
+```python
+import pickle
+import pandas as pd
+import numpy as np
+
+# Step 1: Load the deployment artifact safely
+artifact_path = 'trained_insurance_model.pkl'
+with open(artifact_path, 'rb') as f:
+    artifact = pickle.load(f)
+
+scaler = artifact['scaler']
+model = artifact['model']
+expected_features = artifact['features']
+
+print("🚀 Production Model and Scaler loaded successfully!")
+
+# Step 2: Define a new, unseen sample profile for prediction
+# Scenario: A 45-year-old male, BMI of 28.5, 2 children, who is a smoker living in the southwest
+raw_sample = {
+    'age': 45,
+    'bmi': 28.5,
+    'children': 2,
+    'sex_male': 1,
+    'smoker_yes': 1,
+    'region_northwest': 0,
+    'region_southeast': 0,
+    'region_southwest': 1
+}
+
+# Convert sample to DataFrame and match production column structure exactly
+input_df = pd.DataFrame([raw_sample])[expected_features]
+
+# Step 3: Scale features using the production scaler to eliminate data mismatch
+scaled_input = scaler.transform(input_df)
+
+# Step 4: Generate prediction probability and binary class choice
+prob_high_cost = model.predict_proba(scaled_input)[0][1]
+predicted_class = model.predict(scaled_input)[0]
+
+print(f"Analysis Results:")
+print(f"-> Probability of exceeding median medical charges: {prob_high_cost * 100:.2f}%")
+print(f"-> Final Production Classification: {'High Cost Patient (1)' if predicted_class == 1 else 'Low Cost Patient (0)'}")
 
