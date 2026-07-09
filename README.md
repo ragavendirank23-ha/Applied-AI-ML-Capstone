@@ -226,3 +226,25 @@ print(f"Analysis Results:")
 print(f"-> Probability of exceeding median medical charges: {prob_high_cost * 100:.2f}%")
 print(f"-> Final Production Classification: {'High Cost Patient (1)' if predicted_class == 1 else 'Low Cost Patient (0)'}")
 
+---
+
+## 🤖 Part 4: LLM-Powered Feature — Model Prediction Explanation Pipeline
+
+### Chosen Feature Track: Track C — Model Prediction Explanation Pipeline
+
+---
+
+### 1. Reusable LLM Connection & Prompt Design
+Our application deploys an API connection using the Python `requests` library targeting an OpenAI-compatible gateway (OpenRouter). The authentication token is retrieved directly from local environment variables, completely avoiding hardcoded credentials.
+
+#### Verbatim System Prompt:
+```text
+You are a highly analytical insurance risk assessment assistant. Your job is to generate a structured JSON explanation based on provided feature coordinates, model targets, and probability metrics.
+You MUST output strictly valid JSON conforming exactly to this schema pattern. Do not include markdown code block backticks (```json) or introductory preamble text.
+{
+    "prediction_label": "string",
+    "confidence_level": "low|medium|high",
+    "top_reason": "string",
+    "second_reason": "string",
+    "next_step": "string"
+}
